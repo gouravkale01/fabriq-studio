@@ -1,0 +1,391 @@
+name: Build Fabriq Studio APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Generate Complete Android Project Structure
+      run: |
+        mkdir -p app/src/main/java/com/fabriq/promptstudio/data/local
+        mkdir -p app/src/main/java/com/fabriq/promptstudio/data/repository
+        mkdir -p app/src/main/java/com/fabriq/promptstudio/di
+        mkdir -p app/src/main/java/com/fabriq/promptstudio/domain
+        mkdir -p app/src/main/java/com/fabriq/promptstudio/ui
+
+        cat << 'EOF' > settings.gradle.kts
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "FabriqPromptStudio"
+        include(":app")
+        EOF
+
+        cat << 'EOF' > build.gradle.kts
+        plugins {
+            id("com.android.application") version "8.5.2" apply false
+            id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+            id("com.google.dagger.hilt.android") version "2.51.1" apply false
+        }
+        EOF
+
+        cat << 'EOF' > gradle.properties
+        org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+        android.useAndroidX=true
+        android.nonTransitiveRClass=true
+        EOF
+
+        cat << 'EOF' > app/build.gradle.kts
+        plugins {
+            id("com.android.application")
+            id("org.jetbrains.kotlin.android")
+            id("kotlin-kapt")
+            id("com.google.dagger.hilt.android")
+        }
+
+        android {
+            namespace = "com.fabriq.promptstudio"
+            compileSdk = 35
+
+            defaultConfig {
+                applicationId = "com.fabriq.promptstudio"
+                minSdk = 24
+                targetSdk = 35
+                versionCode = 1
+                versionName = "1.0.0"
+                testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                vectorDrawables { useSupportLibrary = true }
+            }
+
+            buildFeatures { compose = true }
+            composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+        }
+
+        dependencies {
+            implementation(platform("androidx.compose:compose-bom:2024.09.00"))
+            implementation("androidx.compose.ui:ui")
+            implementation("androidx.compose.ui:ui-graphics")
+            implementation("androidx.compose.ui:ui-tooling-preview")
+            implementation("androidx.compose.material3:material3")
+            implementation("androidx.compose.material:material-icons-extended")
+
+            implementation("androidx.core:core-ktx:1.13.1")
+            implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
+            implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
+            implementation("androidx.activity:activity-compose:1.9.2")
+
+            val roomVersion = "2.6.1"
+            implementation("androidx.room:room-runtime:$roomVersion")
+            implementation("androidx.room:room-ktx:$roomVersion")
+            kapt("androidx.room:room-compiler:$roomVersion")
+
+            val hiltVersion = "2.51.1"
+            implementation("com.google.dagger:hilt-android:$hiltVersion")
+            kapt("com.google.dagger:hilt-compiler:$hiltVersion")
+            implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application
+                android:name=".FabriqApp"
+                android:allowBackup="true"
+                android:icon="@android:drawable/sym_def_app_icon"
+                android:label="Fabriq Studio"
+                android:supportsRtl="true"
+                android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:windowSoftInputMode="adjustResize">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/FabriqApp.kt
+        package com.fabriq.promptstudio
+        import android.app.Application
+        import dagger.hilt.android.HiltAndroidApp
+
+        @HiltAndroidApp
+        class FabriqApp : Application()
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/MainActivity.kt
+        package com.fabriq.promptstudio
+        import android.os.Bundle
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import androidx.compose.foundation.layout.fillMaxSize
+        import androidx.compose.material3.MaterialTheme
+        import androidx.compose.material3.Surface
+        import androidx.compose.ui.Modifier
+        import com.fabriq.promptstudio.ui.StudioScreen
+        import dagger.hilt.android.AndroidEntryPoint
+
+        @AndroidEntryPoint
+        class MainActivity : ComponentActivity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContent {
+                    MaterialTheme {
+                        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            StudioScreen()
+                        }
+                    }
+                }
+            }
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/data/local/SavedPrompt.kt
+        package com.fabriq.promptstudio.data.local
+        import androidx.room.*
+        import kotlinx.coroutines.flow.Flow
+
+        @Entity(tableName = "saved_prompts")
+        data class SavedPrompt(
+            @PrimaryKey(autoGenerate = true) val id: Long = 0,
+            val engineName: String,
+            val garmentTitle: String,
+            val promptText: String,
+            val createdAt: Long = System.currentTimeMillis()
+        )
+
+        @Dao
+        interface PromptDao {
+            @Query("SELECT * FROM saved_prompts ORDER BY createdAt DESC")
+            fun getAllSavedPrompts(): Flow<List<SavedPrompt>>
+
+            @Insert(onConflict = OnConflictStrategy.REPLACE)
+            suspend fun savePrompt(prompt: SavedPrompt): Long
+
+            @Delete
+            suspend fun deletePrompt(prompt: SavedPrompt)
+
+            @Query("SELECT EXISTS(SELECT 1 FROM saved_prompts WHERE promptText = :promptText)")
+            fun isPromptSaved(promptText: String): Flow<Boolean>
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/data/local/AppDatabase.kt
+        package com.fabriq.promptstudio.data.local
+        import androidx.room.Database
+        import androidx.room.RoomDatabase
+
+        @Database(entities = [SavedPrompt::class], version = 1, exportSchema = false)
+        abstract class AppDatabase : RoomDatabase() {
+            abstract fun promptDao(): PromptDao
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/data/repository/PromptRepository.kt
+        package com.fabriq.promptstudio.data.repository
+        import com.fabriq.promptstudio.data.local.PromptDao
+        import com.fabriq.promptstudio.data.local.SavedPrompt
+        import kotlinx.coroutines.flow.Flow
+        import javax.inject.Inject
+        import javax.inject.Singleton
+
+        @Singleton
+        class PromptRepository @Inject constructor(private val dao: PromptDao) {
+            fun getSavedPrompts(): Flow<List<SavedPrompt>> = dao.getAllSavedPrompts()
+            suspend fun savePrompt(engine: String, garment: String, prompt: String) = dao.savePrompt(SavedPrompt(engineName = engine, garmentTitle = garment, promptText = prompt))
+            suspend fun deletePrompt(prompt: SavedPrompt) = dao.deletePrompt(prompt)
+            fun isSaved(promptText: String): Flow<Boolean> = dao.isPromptSaved(promptText)
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/di/AppModule.kt
+        package com.fabriq.promptstudio.di
+        import android.content.Context
+        import androidx.room.Room
+        import com.fabriq.promptstudio.data.local.AppDatabase
+        import com.fabriq.promptstudio.data.local.PromptDao
+        import dagger.Module
+        import dagger.Provides
+        import dagger.hilt.InstallIn
+        import dagger.hilt.android.qualifiers.ApplicationContext
+        import dagger.hilt.components.SingletonComponent
+        import javax.inject.Singleton
+
+        @Module
+        @InstallIn(SingletonComponent::class)
+        object AppModule {
+            @Provides
+            @Singleton
+            fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
+                Room.databaseBuilder(context, AppDatabase::class.java, "fabriq_prompt_studio.db").fallbackToDestructiveMigration().build()
+
+            @Provides
+            fun providePromptDao(db: AppDatabase): PromptDao = db.promptDao()
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/domain/PromptEngine.kt
+        package com.fabriq.promptstudio.domain
+
+        data class GarmentItem(val id: String, val name: String, val description: String, val fabricDetail: String)
+        data class GarmentGroup(val category: String, val items: List<GarmentItem>)
+
+        data class StudioState(
+            val selectedCategoryIndex: Int = 0,
+            val garment: GarmentItem = Presets.categories[0].items[0],
+            val model: String = "Indian Female, 20s, graceful pose",
+            val scene: String = "Minimal Luxury Boutique, neutral stone walls",
+            val lighting: String = "Soft diffused morning studio light, gentle shadows",
+            val shotType: String = "Full length editorial catalog view",
+            val aspectRatio: String = "4:5"
+        )
+
+        object Presets {
+            val categories = listOf(
+                GarmentGroup("Ethnic Indian", listOf(
+                    GarmentItem("kurti", "Kurti Set", "designer tailored straight-cut cotton/silk kurti with matching cigarette pants and sheer dupatta", "authentic dupatta drape across shoulder, side slit fall, clean collar and neck embroidery"),
+                    GarmentItem("saree", "Designer Saree", "classic draped Indian silk saree with an intricately tailored blouse", "crisp pleated pallu pinned at shoulder, natural falling pleats, authentic zari borders"),
+                    GarmentItem("anarkali", "Anarkali Suit", "flowy floor-length multi-kali flared Anarkali suit with embroidered yoke", "voluminous flare, dynamic movement, delicate hem borders"),
+                    GarmentItem("lehenga", "Bridal Lehenga", "heavy regal embroidered velvet/silk lehenga choli with ornate net dupatta", "sculpted silhouette, dense handcrafted zardozi embroidery, rich fabric sheen"),
+                    GarmentItem("mens_kurta", "Men's Kurta Pyjama", "tailored raw silk men's kurta with churidar and a Nehru jacket", "structured mandarin collar, clean front placket, sharp tailored fit")
+                )),
+                GarmentGroup("Western Wear", listOf(
+                    GarmentItem("oversized_tee", "Oversized T-Shirt", "heavyweight 240 GSM drop-shoulder boxy streetwear t-shirt", "relaxed cotton ribbing, natural sleeve drop, authentic fabric creases"),
+                    GarmentItem("hoodie", "Fleece Hoodie", "premium French terry oversized pullover hoodie with kangaroo pocket", "relaxed resting hood, structured ribbed hem and cuffs"),
+                    GarmentItem("blouse_top", "Chic Blouse", "contemporary puff-sleeve satin evening blouse paired with tailored trousers", "smooth luster, elegant sleeve gathering, tailored seamlines"),
+                    GarmentItem("maxi_dress", "Floral Maxi Dress", "breezy tier-cut georgette maxi dress with delicate floral prints", "airy drape, waist cinch definition, realistic chiffon translucency"),
+                    GarmentItem("denim_jacket", "Denim Jacket", "classic vintage washed heavy denim trucker jacket", "rugged twill weave, copper rivet accents, contrast yellow stitching")
+                ))
+            )
+            val models = listOf("Indian Female, 20s, graceful pose", "Indian Male, athletic build, sharp look", "International Female, high-fashion editorial", "Plus Size Female, confident elegant look")
+            val scenes = listOf("Minimal Luxury Boutique, neutral stone walls", "Clean White Infinity Studio, shadowless floor", "Aesthetic Urban Street, modern cafe facade", "Sunlit Botanical Garden, soft green bokeh")
+            val lightings = listOf("Soft diffused studio box lighting", "Warm golden hour side backlight", "High-contrast editorial dramatic lighting", "Bright natural daylight from large windows")
+            val shotTypes = listOf("Full length catalog view", "Waist-up medium portrait", "Macro close-up on fabric & stitches")
+            val ratios = listOf("4:5" to "Instagram Post", "9:16" to "Story / Reel", "1:1" to "Square Catalog")
+        }
+
+        object PromptGenerator {
+            fun generateMidjourney(s: StudioState): String = "Editorial commercial fashion photoshoot, ${s.model} wearing the uploaded ${s.garment.description}, ${s.garment.fabricDetail}, set in ${s.scene}, ${s.shotType}, ${s.lighting}, captured on 50mm f/1.8 prime lens, realistic textile weaves, seamless garment drape, 8k resolution --ar ${s.aspectRatio} --style raw --v 6.1"
+            fun generateGeminiChatGpt(s: StudioState): String = "Create a photorealistic commercial catalog image of a ${s.model} wearing the exact ${s.garment.name} shown in the attached reference picture. Maintain total fabric consistency: ${s.garment.fabricDetail}. Location: ${s.scene}. Lighting: ${s.lighting}. Perspective: ${s.shotType}. Preserve authentic garment shape, seams, and color balance without distortion."
+            fun generateFlux(s: StudioState): String = "Raw fashion photography, authentic catalog look, ${s.model} dressed in the exact garment from image: ${s.garment.description}, ${s.garment.fabricDetail}, standing inside ${s.scene}, ${s.shotType}, natural studio lighting, ultra-detailed fabric micro-texture, 35mm photograph"
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/ui/StudioViewModel.kt
+        package com.fabriq.promptstudio.ui
+        import androidx.lifecycle.ViewModel
+        import androidx.lifecycle.viewModelScope
+        import com.fabriq.promptstudio.data.local.SavedPrompt
+        import com.fabriq.promptstudio.data.repository.PromptRepository
+        import com.fabriq.promptstudio.domain.GarmentItem
+        import com.fabriq.promptstudio.domain.StudioState
+        import dagger.hilt.android.lifecycle.HiltViewModel
+        import kotlinx.coroutines.flow.*
+        import kotlinx.coroutines.launch
+        import javax.inject.Inject
+
+        @HiltViewModel
+        class StudioViewModel @Inject constructor(private val repository: PromptRepository) : ViewModel() {
+            private val _uiState = MutableStateFlow(StudioState())
+            val uiState: StateFlow<StudioState> = _uiState.asStateFlow()
+            val savedPrompts: StateFlow<List<SavedPrompt>> = repository.getSavedPrompts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+            fun updateCategory(index: Int, garment: GarmentItem) { _uiState.value = _uiState.value.copy(selectedCategoryIndex = index, garment = garment) }
+            fun updateGarment(garment: GarmentItem) { _uiState.value = _uiState.value.copy(garment = garment) }
+            fun updateModel(model: String) { _uiState.value = _uiState.value.copy(model = model) }
+            fun updateScene(scene: String) { _uiState.value = _uiState.value.copy(scene = scene) }
+            fun updateLighting(lighting: String) { _uiState.value = _uiState.value.copy(lighting = lighting) }
+            fun updateShotType(shot: String) { _uiState.value = _uiState.value.copy(shotType = shot) }
+            fun updateRatio(ratio: String) { _uiState.value = _uiState.value.copy(aspectRatio = ratio) }
+            fun toggleSave(engine: String, garment: String, prompt: String, isAlreadySaved: Boolean) {
+                viewModelScope.launch { if (!isAlreadySaved) repository.savePrompt(engine, garment, prompt) }
+            }
+            fun deletePrompt(prompt: SavedPrompt) { viewModelScope.launch { repository.deletePrompt(prompt) } }
+            fun isPromptSavedFlow(promptText: String) = repository.isSaved(promptText)
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/ui/StudioScreen.kt
+        package com.fabriq.promptstudio.ui
+        import android.content.Intent
+        import androidx.compose.foundation.*
+        import androidx.compose.foundation.layout.*
+        import androidx.compose.foundation.lazy.LazyColumn
+        import androidx.compose.foundation.lazy.items
+        import androidx.compose.foundation.shape.RoundedCornerShape
+        import androidx.compose.material.icons.Icons
+        import androidx.compose.material.icons.filled.*
+        import androidx.compose.material3.*
+        import androidx.compose.runtime.*
+        import androidx.compose.ui.Alignment
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+        import androidx.compose.ui.platform.LocalClipboardManager
+        import androidx.compose.ui.platform.LocalContext
+        import androidx.compose.ui.platform.LocalHapticFeedback
+        import androidx.compose.ui.text.AnnotatedString
+        import androidx.compose.ui.text.font.FontWeight
+        import androidx.compose.ui.text.style.TextOverflow
+        import androidx.compose.ui.unit.dp
+        import androidx.compose.ui.unit.sp
+        import androidx.hilt.navigation.compose.hiltViewModel
+        import com.fabriq.promptstudio.data.local.SavedPrompt
+        import com.fabriq.promptstudio.domain.Presets
+        import com.fabriq.promptstudio.domain.PromptGenerator
+
+        @OptIn(ExperimentalMaterial3Api::class)
+        @Composable
+        fun StudioScreen(viewModel: StudioViewModel = hiltViewModel()) {
+            val uiState by viewModel.uiState.collectAsState()
+            val savedPrompts by viewModel.savedPrompts.collectAsState()
+            var showResultSheet by remember { mutableStateOf(false) }
+            var showBookmarksSheet by remember { mutableStateOf(false) }
+
+            val haptic = LocalHapticFeedback.current
+            val clipboardManager = LocalClipboardManager.current
+            val context = LocalContext.current
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text("Fabriq Studio", fontWeight = FontWeight.Black, fontSize = 20.sp)
+                                Text("Garment to AI Prompt Engine", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        },
+           
