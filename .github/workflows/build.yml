@@ -57,7 +57,7 @@ jobs:
                 versionName = \"1.0.0\"
                 vectorDrawables { useSupportLibrary = true }
             }
-            buildFeatures { compose = true }
+			            buildFeatures { compose = true }
             composeOptions { kotlinCompilerExtensionVersion = \"1.5.14\" }
         }
         dependencies {
@@ -126,7 +126,7 @@ jobs:
                 }
             }
         }''',
-
+		
             'app/src/main/java/com/fabriq/promptstudio/data/local/SavedPrompt.kt': '''package com.fabriq.promptstudio.data.local
         import androidx.room.*
         import kotlinx.coroutines.flow.Flow
@@ -223,7 +223,7 @@ jobs:
                     GarmentItem(\"denim_jacket\", \"Denim Jacket\", \"classic vintage washed heavy denim trucker jacket\", \"rugged twill weave, copper rivet accents, contrast yellow stitching\")
                 ))
             )
-            val models = listOf(\"Indian Female, 20s, graceful pose\", \"Indian Male, athletic build, sharp look\", \"International Female, high-fashion editorial\", \"Plus Size Female, confident elegant look\")
+			            val models = listOf(\"Indian Female, 20s, graceful pose\", \"Indian Male, athletic build, sharp look\", \"International Female, high-fashion editorial\", \"Plus Size Female, confident elegant look\")
             val scenes = listOf(\"Minimal Luxury Boutique, neutral stone walls\", \"Clean White Infinity Studio, shadowless floor\", \"Aesthetic Urban Street, modern cafe facade\", \"Sunlit Botanical Garden, soft green bokeh\")
             val lightings = listOf(\"Soft diffused studio box lighting\", \"Warm golden hour side backlight\", \"High-contrast editorial dramatic lighting\", \"Bright natural daylight from large windows\")
             val shotTypes = listOf(\"Full length catalog view\", \"Waist-up medium portrait\", \"Macro close-up on fabric & stitches\")
@@ -380,7 +380,7 @@ jobs:
                             }
                         }
                     }
-		                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+					                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(\"4. Aspect Ratio\", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Presets.ratios.forEach { (ratio, label) ->
