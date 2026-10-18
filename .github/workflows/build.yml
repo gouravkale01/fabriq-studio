@@ -1,190 +1,156 @@
 name: Build Fabriq Studio APK
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
+    - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
         distribution: 'temurin'
+        java-version: 17
 
-    - name: Generate Project Files
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Build Project Files
       run: |
-        mkdir -p app/src/main/java/com/fabriq/promptstudio/data/local
-        mkdir -p app/src/main/java/com/fabriq/promptstudio/data/repository
-        mkdir -p app/src/main/java/com/fabriq/promptstudio/di
-        mkdir -p app/src/main/java/com/fabriq/promptstudio/domain
-        mkdir -p app/src/main/java/com/fabriq/promptstudio/ui
+        cat << 'EOF' > make_app.py
+        import os
 
-        echo "cGx1Z2luTWFuYWdlbWVudCB7CiAgICByZXBvc2l0b3JpZXMgewogICAgICAgIGdvb2dsZSgpCiAgICAgICAgbWF2ZW5DZW50cmFsKCkKICAgICAgICBncmFkbGVQbHVnaW5Qb3J0YWwoKQogICAgfQp9CmRlcGVuZGVuY3lSZXNvbHV0aW9uTWFuYWdlbWVudCB7CiAgICByZXBvc2l0b3JpZXNNb2RlLnNldChSZXBvc2l0b3JpZXNNb2RlLkZBSUxfT05fUFJPSkVDVF9SRVBPUykKICAgIHJlcG9zaXRvcmllcyB7CiAgICAgICAgZ29vZ2xlKCkKICAgICAgICBtYXZlbkNlbnRyYWwoKQogICAgfQp9CnJvb3RQcm9qZWN0Lm5hbWUgPSAiRmFicmlxUHJvbXB0U3R1ZGlvIgppbmNsdWRlKCI6YXBwIik=" | base64 -d > settings.gradle.kts
+        files = {
+            "settings.gradle": 'rootProject.name = "FabriqStudio"\ninclude(":app")',
+            "build.gradle": 'buildscript {\n repositories { google(); mavenCentral() }\n dependencies { classpath "com.android.tools.build:gradle:8.2.2" }\n}\nallprojects { repositories { google(); mavenCentral() } }',
+            "gradle.properties": 'android.useAndroidX=true',
+            "app/build.gradle": '''apply plugin: "com.android.application"
+        android {
+            namespace "com.fabriq.promptstudio"
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.fabriq.promptstudio"
+                minSdk 24
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+        }
+        dependencies {
+            implementation "androidx.appcompat:appcompat:1.6.1"
+            implementation "com.google.android.material:material:1.11.0"
+        }''',
+            "app/src/main/AndroidManifest.xml": '''<?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application
+                android:label="Fabriq Studio"
+                android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>''',
+            "app/src/main/res/layout/activity_main.xml": '''<?xml version="1.0" encoding="utf-8"?>
+        <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Fabriq Prompt Studio"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="#000000"
+                    android:layout_marginBottom="16dp"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Enter Garment Type (e.g. Kurti, Saree, Hoodie):"
+                    android:textStyle="bold"/>
+                <EditText
+                    android:id="@+id/etGarment"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Silk Saree / Cotton Kurti"
+                    android:layout_marginBottom="12dp"/>
+                <Button
+                    android:id="@+id/btnGenerate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Generate Prompts"
+                    android:layout_marginBottom="16dp"/>
+                <TextView
+                    android:id="@+id/tvResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="#333333"
+                    android:textIsSelectable="true"/>
+            </LinearLayout>
+        </ScrollView>''',
+            "app/src/main/java/com/fabriq/promptstudio/MainActivity.java": '''package com.fabriq.promptstudio;
 
-        echo "cGx1Z2lucyB7CiAgICBpZCgiY29tLmFuZHJvaWQuYXBwbGljYXRpb24iKSB2ZXJzaW9uICI4LjUuMiIgYXBwbHkgZmFsc2UKICAgIGlkKCJvcmcuamV0YnJhaW5zLmtvdGxpbi5hbmRyb2lkIikgdmVyc2lvbiAiMS45LjI0IiBhcHBseSBmYWxzZQogICAgaWQoImNvbS5nb29nbGUuZGFnZ2VyLmhpbHQuYW5kcm9pZCIpIHZlcnNpb24gIjIuNTEuMSIgYXBwbHkgZmFsc2UKfQ==" | base64 -d > build.gradle.kts
+        import android.os.Bundle;
+        import android.view.View;
+        import android.widget.Button;
+        import android.widget.EditText;
+        import android.widget.TextView;
+        import androidx.appcompat.app.AppCompatActivity;
 
-        echo "b3JnLmdyYWRsZS5qdm1hcmdzPS1YbXgyMDQ4bSAtRGZpbGUuZW5jb2Rpbmc9VVRGLTgKYW5kcm9pZC51c2VBbmRyb2lkWD10cnVlCmFuZHJvaWQubm9uVHJhbnNpdGl2ZVJDbGFzcz10cnVl" | base64 -d > gradle.properties
-
-        echo "cGx1Z2lucyB7CiAgICBpZCgiY29tLmFuZHJvaWQuYXBwbGljYXRpb24iKQogICAgaWQoIm9yZy5qZXRicmFpbnMua290bGluLmFuZHJvaWQiKQogICAgaWQoImtvdGxpbi1rYXB0IikKICAgIGlkKCJjb20uZ29vZ2xlLmRhZ2dlci5oaWx0LmFuZHJvaWQiKQp9CgphbmRyb2lkIHsKICAgIG5hbWVzcGFjZSA9ICJjb20uZmFicmlxLnByb21wdHN0dWRpbyIKICAgIGNvbXBpbGVTZGsgPSAzNQoKICAgIGRlZmF1bHRDb25maWcgewogICAgICAgIGFwcGxpY2F0aW9uSWQgPSAiY29tLmZhYnJpcS5wcm9tcHRzdHVkaW8iCiAgICAgICAgbWluU2RrID0gMjQKICAgICAgICB0YXJnZXRTZGsgPSAzNQogICAgICAgIHZlcnNpb25Db2RlID0gMQogICAgICAgIHZlcnNpb25OYW1lID0gIjEuMC4wIgogICAgICAgIHZlY3RvckRyYXdhYmxlcyB7IHVzZVN1cHBvcnRMaWJyYXJ5ID0gdHJ1ZSB9CiAgICB9CgogICAgYnVpbGRGZWF0dXJlcyB7IGNvbXBvc2UgPSB0cnVlIH0KICAgIGNvbXBvc2VPcHRpb25zIHsga290bGluQ29tcGlsZXJFeHRlbnNpb25WZXJzaW9uID0gIjEuNS4xNCIgfQp9CgpkZXBlbmRlbmNpZXMgewogICAgaW1wbGVtZW50YXRpb24ocGxhdGZvcm0oImFuZHJvaWR4LmNvbXBvc2U6Y29tcG9zZS1ib206MjAyNC4wOS4wMCIpKQogICAgaW1wbGVtZW50YXRpb24oImFuZHJvaWR4LmNvbXBvc2UudWk6dWkiKQogICAgaW1wbGVtZW50YXRpb24oImFuZHJvaWR4LmNvbXBvc2UudWk6dWktZ3JhcGhpY3MiKQogICAgaW1wbGVtZW50YXRpb24oImFuZHJvaWR4LmNvbXBvc2UudWk6dWktdG9vbGluZy1wcmV2aWV3IikKICAgIGltcGxlbWVudGF0aW9uKCJhbmRyb2lkeC5jb21wb3NlLm1hdGVyaWFsMzptYXRlcmlhbDMiKQogICAgaW1wbGVtZW50YXRpb24oImFuZHJvaWR4LmNvbXBvc2UubWF0ZXJpYWw6bWF0ZXJpYWwtaWNvbnMtZXh0ZW5kZWQiKQoKICAgIGltcGxlbWVudGF0aW9uKCJhbmRyb2lkeC5jb3JlOmNvcmUta3R4OjEuMTMuMSIpCiAgICBpbXBsZW1lbnRhdGlvbigiYW5kcm9pZHgubGlmZWN5Y2xlOmxpZmVjeWNsZS1ydW50aW1lLWt0eDoyLjguNSIpCiAgICBpbXBsZW1lbnRhdGlvbigiYW5kcm9pZHgubGlmZWN5Y2xlOmxpZmVjeWNsZS12aWV3bW9kZWwtY29tcG9zZToyLjguNSIpCiAgICBpbXBsZW1lbnRhdGlvbigiYW5kcm9pZHgudXBwLmFjdGl2aXR5OmFjdGl2aXR5LWNvbXBvc2U6MS45LjIiKQoKICAgIGltcGxlbWVudGF0aW9uKCJhbmRyb2lkeC5yb29tOnJvb20tcnVudGltZToyLjYuMSIpCiAgICBpbXBsZW1lbnRhdGlvbigiYW5kcm9pZHgucm9vbTpyb29tLWt0eDoyLjYuMSIpCiAgICBrYXB0KCJhbmRyb2lkeC5yb29tOnJvb20tY29tcGlsZXI6Mi42LjEiKQoKICAgIGltcGxlbWVudGF0aW9uKCJjb20uZ29vZ2xlLmRhZ2dlcjpoaWx0LWFuZHJvaWQ6Mi41MS4xIikKICAgIGthcHQoImNvbS5nb29nbGUuZGFnZ2VyOmhpbHQtY29tcGlsZXI6Mi41MS4xIikKICAgIGltcGxlbWVudGF0aW9uKCJhbmRyb2lkeC5oaWx0OmhpbHQtbmF2aWdhdGlvbi1jb21wb3NlOjEuMi4wIikKfQ==" | base64 -d > app/build.gradle.kts
-
-        echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPG1hbmlmZXN0IHhtbG5zOmFuZHJvaWQ9Imh0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fway9yZXMvYW5kcm9pZCI+CiAgICA8YXBwbGljYXRpb24KICAgICAgICBhbmRyb2lkOm5hbWU9Ii5GYWJyaXFBcHAiCiAgICAgICAgYW5kcm9pZDphbGxvd0JhY2t1cD0idHJ1ZSIKICAgICAgICBhbmRyb2lkOmljb249IkBhbmRyb2lkOmRyYXdhYmxlL3N5bV9kZWZfYXBwX2ljb24iCiAgICAgICAgYW5kcm9pZDpsYWJlbD0iRmFicmlxIFN0dWRpbyIKICAgICAgICBhbmRyb2lkOnN1cHBvcnRzUnRsPSJ0cnVlIgogICAgICAgIGFuZHJvaWQ6dGhlbWU9IkBhbmRyb2lkOnN0eWxlL1RoZW1lLk1hdGVyaWFsLkxpZ2h0Lk5vQWN0aW9uQmFyIj4KICAgICAgICA8YWN0aXZpdHkgYW5kcm9pZDpuYW1lPSIuTWFpbkFjdGl2aXR5IiBhbmRyb2lkOmV4cG9ydGVkPSJ0cnVlIiBhbmRyb2lkOndpbmRvd1NvZnRJbnB1dE1vZGU9ImFkanVzdFJlc2l6ZSI+CiAgICAgICAgICAgIDxpbnRlbnQtZmlsdGVyPgogICAgICAgICAgICAgICAgPGFjdGlvbiBhbmRyb2lkOm5hbWU9ImFuZHJvaWQuaW50ZW50LmFjdGlvbi5NQUlOIiAvPgogICAgICAgICAgICAgICAgPGNhdGVnb3J5IGFuZHJvaWQ6bmFtZT0iYW5kcm9pZC5pbnRlbnQuY2F0ZWdvcnkuTEFVTkNIRVIiIC8+CiAgICAgICAgICAgIDwvaW50ZW50LWZpbHRlcj4KICAgICAgICA8L2FjdGl2aXR5PgogICAgPC9hcHBsaWNhdGlvbj4KPC9tYW5pZmVzdD4=" | base64 -d > app/src/main/AndroidManifest.xml
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpbwoKaW1wb3J0IGFuZHJvaWQuYXBwLkFwcGxpY2F0aW9uCmltcG9ydCBkYWdnZXIuaGlsdC5hbmRyb2lkLkhpbHRBbmRyb2lkQXBwCgpASGlsdEFuZHJvaWRBcHAKY2xhc3MgRmFicmlxQXBwIDogQXBwbGljYXRpb24oKQ==" | base64 -d > app/src/main/java/com/fabriq/promptstudio/FabriqApp.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpbwoKaW1wb3J0IGFuZHJvaWQub3MuQnVuZGxlCmltcG9ydCBhbmRyb2lkeC5hY3Rpdml0eS5Db21wb25lbnRBY3Rpdml0eQppbXBvcnQgYW5kcm9pZHgucmN0aXZpdHkuY29tcG9zZS5zZXRDb250ZW50CmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24ubGF5b3V0LmZpbGxNYXhTaXplCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLm1hdGVyaWFsMy5NYXRlcmlhbFRoZW1lCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLm1hdGVyaWFsMy5TdXJmYWNlCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLnVpLk1vZGlmaWVyCmltcG9ydCBjb20uZmFicmlxLnByb21wdHN0dWRpby51aS5TdHVkaW9TY3JlZW4KaW1wb3J0IGRhZ2dlci5oaWx0LmFuZHJvaWQuQW5kcm9pZEVudHJ5UG9pbnQKCkBQbmRyb2lkRW50cnlQb2ludApjbGFzcyBNYWluQWN0aXZpdHkgOiBDb21wb25lbnRBY3Rpdml0eSgpIHsKICAgIG92ZXJyaWRlIGZ1biBvbkNyZWF0ZShzYXZlZEluc3RhbmNlU3RhdGU6IEJ1bmRsZT8pIHsKICAgICAgICBzdXBlci5vbkNyZWF0ZShzYXZlZEluc3RhbmNlU3RhdGUpCiAgICAgICAgc2V0Q29udGVudCB7CiAgICAgICAgICAgIE1hdGVyaWFsVGhlbWUgewogICAgICAgICAgICAgICAgU3VyZmFjZShtb2RpZmllciA9IE1vZGlmaWVyLmZpbGxNYXhTaXplKCksIGNvbG9yID0gTWF0ZXJpYWxUaGVtZS5jb2xvclNjaGVtZS5iYWNrZ3JvdW5kKSB7CiAgICAgICAgICAgICAgICAgICAgU3R1ZGlvU2NyZWVuKCkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KfQ==" | base64 -d > app/src/main/java/com/fabriq/promptstudio/MainActivity.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpby5kYXRhLmxvY2FsCgppbXBvcnQgYW5kcm9pZHgucm9vbS4qCmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuZmxvdy5GbG93CgpARW50aXR5KHRhYmxlTmFtZSA9ICJzYXZlZF9wcm9tcHRzIikKZGF0YSBjbGFzcyBTYXZlZFByb21wdCgKICAgIEBQcmltYXJ5S2V5KGF1dG9HZW5lcmF0ZSA9IHRydWUpIHZhbCBpZDogTG9uZyA9IDAsCiAgICB2YWwgZW5naW5lTmFtZTogU3RyaW5nLAogICAgdmFsIGdhcm1lbnRUaXRsZTogU3RyaW5nLAogICAgdmFsIHByb21wdFRleHQ6IFN0cmluZywKICAgIHZhbCBjcmVhdGVkQXQ6IExvbmcgPSBTeXN0ZW0uY3VycmVudFRpbWVNaWxsaXMoKQopCgpARGFvCmludGVyZmFjZSBQcm9tcHREYW8gewogICAgQFF1ZXJ5KCJTRUxFQ1QgKiBGUk9NIHNhdmVkX3Byb21wdHMgT1JERVIgQlkgY3JlYXRlZEF0IERFU0MiKQogICAgZnVuIGdldEFsbFNhdmVkUHJvbXB0cygpOiBGbG93PExpc3Q8U2F2ZWRQcm9tcHQ+PgoKICAgIEBJbnNlcnQob25Db25mbGljdCA9IE9uQ29uZmxpY3RTdHJhdGVneS5SRVBMQUNFKSgKICAgIHN1c3BlbmQgZnVuIHNhdmVQcm9tcHQocHJvbXB0OiBTYXZlZFByb21wdCk6IExvbmcKCiAgICBARGVsZXRlCiAgICBzdXNwZW5kIGZ1biBkZWxldGVQcm9tcHQocHJvbXB0OiBTYXZlZFByb21wdCkKCiAgICBRUXVlcnkoIlNFTEVDVCBFWElTVFMoU0VMRUNUIDEgRlJPTSBzYXZlZF9wcm9tcHRzIFdIRVJFIHByb21wdFRleHQgPSA6cHJvbXB0VGV4dCkiKQogICAgZnVuIGlzUHJvbXB0U2F2ZWQocHJvbXB0VGV4dDogU3RyaW5nKTogRmxvdzxCb29sZWFuPgp9" | base64 -d > app/src/main/java/com/fabriq/promptstudio/data/local/SavedPrompt.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpby5kYXRhLmxvY2FsCgppbXBvcnQgYW5kcm9pZHgucm9vbS5EYXRhYmFzZQppbXBvcnQgYW5kcm9pZHgucm9vbS5Sb29tRGF0YWJhc2UKCkBEYXRhYmFzZShlbnRpdGllcyA9IFtTYXZlZFByb21wdDo6Y2xhc3NdLCB2ZXJzaW9uID0gMSwgZXhwb3J0U2NoZW1hID0gZmFsc2UpCmFic3RyYWN0IGNsYXNzIEFwcERhdGFiYXNlIDogUm9vbURhdGFiYXNlKCkgewogICAgYWJzdHJhY3QgZnVuIHByb21wdERhbygpOiBQcm9tcHREYW8KfQ==" | base64 -d > app/src/main/java/com/fabriq/promptstudio/data/local/AppDatabase.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpby5kYXRhLnJlcG9zaXRvcnkKCmltcG9ydCBjb20uZmFicmlxLnByb21wdHN0dWRpby5kYXRhLmxvY2FsLlByb21wdERhbwppbXBvcnQgY29tLmZhYnJpcS5wcm9tcHRzdHVkaW8uZGF0YS5sb2NhbC5TYXZlZFByb21wdAppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuRmxvdwppbXBvcnQgamF2YXguaW5qZWN0LkluZWN0CmltcG9ydCBqYXZheC5pbmplY3QuU2luZ2xldG9uCgpAU2luZ2xldG9uCmNsYXNzIFByb21wdFJlcG9zaXRvcnkgQEluZWN0IGNvbnN0cnVjdG9yKHByaXZhdGUgdmFsIGRhbzogUHJvbXB0RGFvKSB7CiAgICBmdW4gZ2V0U2F2ZWRQcm9tcHRzKCk6IEZsb3c8TGlzdDxTYXZlZFByb21wdD4+ID0gZGFvLmdldEFsbFNhdmVkUHJvbXB0cygpCiAgICBzdXNwZW5kIGZ1biBzYXZlUHJvbXB0KGVuZ2luZTogU3RyaW5nLCBnYXJtZW50OiBTdHJpbmcsIHByb21wdDogU3RyaW5nKSA9IGRvYS5zYXZlUHJvbXB0KFNhdmVkUHJvbXB0KGVuZ2luZU5hbWUgPSBlbmdpbmUsIGdhcm1lbnRUaXRsZSA9IGdhcm1lbnQsIHByb21wdFRleHQgPSBwcm9tcHQpKQogICAgc3VzcGVuZCBmdW4gZGVsZXRlUHJvbXB0KHByb21wdDogU2F2ZWRQcm9tcHQpID0gZGFvLmRlbGV0ZVByb21wdChwcm9tcHQpCiAgICBmdW4gaXNTYXZlZChwcm9tcHRUZXh0OiBTdHJpbmcpOiBGbG93PEJvb2xlYW4+ID0gZGFvLmlzUHJvbXB0U2F2ZWQocHJvbXB0VGV4dCkKfQ==" | base64 -d > app/src/main/java/com/fabriq/promptstudio/data/repository/PromptRepository.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpby5kaQoKaW1wb3J0IGFuZHJvaWQuY29udGVudC5Db250ZXh0CmltcG9ydCBhbmRyb2lkeC5yb29tLlJvb20KaW1wb3J0IGNvbS5mYWJyaXEucHJvbXB0c3R1ZGlvLmRhdGEubG9jYWwuQXBwRGF0YWJhc2UKaW1wb3J0IGNvbS5mYWJyaXEucHJvbXB0c3R1ZGlvLmRhdGEubG9jYWwuUHJvbXB0RGFvCmltcG9ydCBkYWdnZXIuTW9kdWxlCmltcG9ydCBkYWdnZXIuUHJvdmlkZXMKaW1wb3J0IGRhZ2dlci5oaWx0Lkluc3RhbGxJbgppbXBvcnQgZGFnZ2VyLmhpbHQuYW5kcm9pZC5xdWFsaWZpZXJzLkFwcGxpY2F0aW9uQ29udGV4dAppbXBvcnQgZGFnZ2VyLmhpbHQuY29tcG9uZW50cy5TaW5nbGV0b25Db21wb25lbnQKaW1wb3J0IGphdmF4LmluZWN0LlNpbmdsZXRvbgoKQE1vZHVsZQpASW5zdGFsbEluKFNpbmdsZXRvbkNvbXBvbmVudDo6Y2xhc3MpCm9iamVjdCBBcHBNb2R1bGUgewogICAgQFByb3ZpZGVzCiAgICBAU2luZ2xldG9uCiAgICBmdW4gcHJvdmlkZURhdGFiYXNlKEBBcHBsaWNhdGlvbkNvbnRleHQgY29udGV4dDogQ29udGV4dCk6IEFwcERhdGFiYXNlID0KICAgICAgICBSb29tLmRhdGFiYXNlQnVpbGRlcihjb250ZXh0LCBBcHBEYXRhYmFzZTo6Y2xhc3MsICJmYWJyaXFfcHJvbXB0X3N0dWRpby5kYiIpLmZhbGxiYWNrVG9EZXN0cnVjdGl2ZU1pZ3JhdGlvbigpLmJ1aWxkKCkKCiAgICBAUHJvdmlkZXMKICAgIGZ1biBwcm92aWRlUHJvbXB0RGFvKGRiOiBBcHBEYXRhYmFzZSk6IFByb21wdERhbyA9IGRiLnByb21wdERhbygpCn0=" | base64 -d > app/src/main/java/com/fabriq/promptstudio/di/AppModule.kt
-
-        echo "cGFja2FnZSBjb20uZmFicmlxLnByb21wdHN0dWRpby5kb21haW4KCmRhdGEgY2xhc3MgR2FybWVudEl0ZW0odmFsIGlkOiBTdHJpbmcsIHZhbCBuYW1lOiBTdHJpbmcsIHZhbCBkZXNjcmlwdGlvbjogU3RyaW5nLCB2YWwgZmFicmljRGV0YWlsOiBTdHJpbmcpCmRhdGEgY2xhc3MgR2FybWVudEdyb3VwKHZhbCBjYXRlZ29yeTogU3RyaW5nLCB2YWwgaXRlbXM6IExpc3Q8R2FybWVudEl0ZW0+KQoKZGF0YSBjbGFzcyBTdHVkaW9TdGF0ZSgKICAgIHZhbCBzZWxlY3RlZENhdGVnb3J5SW5kZXg6IEludCA9IDAsCiAgICB2YWwgZ2FybWVudDogR2FybWVudEl0ZW0gPSBQcmVzZXRzLmNhdGVnb3JpZXNbMF0uaXRlbXNbMF0sCiAgICB2YWwgbW9kZWw6IFN0cmluZyA9ICJJbmRpYW4gRmVtYWxlLCAyMHMsIGdyYWNlZnVsIHBvc2UiLAogICAgdmFsIHNjZW5lOiBTdHJpbmcgPSAiTWluaW1hbCBMdXh1cnkgQm91dGlxdWUsIG5ldXRyYWwgc3RvbmUgd2FsbHMiLAogICAgdmFsIGxpZ2h0aW5nOiBTdHJpbmcgPSAiU29mdCBkaWZmdXNlZCBtb3JuaW5nIHN0dWRpbyBsaWdodCwgZ2VudGxlIHNoYWRvd3MiLAogICAgdmFsIHNob3RUeXBlOiBTdHJpbmcgPSAiRnVsbCBsZW5ndGggZWRpdG9yaWFsIGNhdGFsb2cgdmlldyIsCiAgICB2YWwgYXNwZWN0UmF0aW86IFN0cmluZyA9ICI0OjUiCikKCgotLS0tT1ZFUkZMT1ctLS0=" > /dev/null || true
-
-    - name: Download Precompiled Single-Source App
-      run: |
-        curl -sL "https://gist.githubusercontent.com/grvdotcom/7cf62b781a7b827cb6e65df6ebae4883/raw/PromptApp.kt" -o app/src/main/java/com/fabriq/promptstudio/PromptApp.kt || true
-        # If gist is empty, fallback to writing a robust self-contained file
-        cat << 'EOF' > app/src/main/java/com/fabriq/promptstudio/PromptApp.kt
-        package com.fabriq.promptstudio
-
-        import android.app.Application
-        import android.os.Bundle
-        import androidx.activity.ComponentActivity
-        import androidx.activity.compose.setContent
-        import androidx.compose.foundation.*
-        import androidx.compose.foundation.layout.*
-        import androidx.compose.foundation.shape.RoundedCornerShape
-        import androidx.compose.material3.*
-        import androidx.compose.runtime.*
-        import androidx.compose.ui.Alignment
-        import androidx.compose.ui.Modifier
-        import androidx.compose.ui.graphics.Color
-        import androidx.compose.ui.platform.LocalClipboardManager
-        import androidx.compose.ui.text.AnnotatedString
-        import androidx.compose.ui.text.font.FontWeight
-        import androidx.compose.ui.unit.dp
-        import androidx.compose.ui.unit.sp
-        import dagger.hilt.android.AndroidEntryPoint
-        import dagger.hilt.android.HiltAndroidApp
-
-        @HiltAndroidApp
-        class FabriqApp : Application()
-
-        @AndroidEntryPoint
-        class MainActivity : ComponentActivity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
+        public class MainActivity extends AppCompatActivity {
+            @Override
+            protected void onCreate(Bundle savedInstanceState) {
                 super.onCreate(savedInstanceState)
-                setContent {
-                    MaterialTheme {
-                        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                            FabriqStudioScreen()
-                        }
+                setContentView(R.layout.activity_main);
+
+                EditText etGarment = findViewById(R.id.etGarment);
+                Button btnGenerate = findViewById(R.id.btnGenerate);
+                TextView tvResult = findViewById(R.id.tvResult);
+
+                btnGenerate.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        String g = etGarment.getText().toString().trim();
+                        if (g.isEmpty()) g = "designer garment";
+                        String prompt = "MIDJOURNEY v6.1 PROMPT:\\n" +
+                                "High-end commercial catalog photoshoot, Indian female model wearing the uploaded " + g +
+                                ", luxury boutique studio setting, soft diffused lighting, 50mm portrait lens, ultra-realistic fabric weave --ar 4:5 --style raw\\n\\n" +
+                                "GEMINI / CHATGPT PROMPT:\\n" +
+                                "Create a photorealistic studio catalog image of an Indian woman wearing the exact " + g +
+                                " shown in the reference photo. Preserve accurate stitching, drape, and texture.";
+                        tvResult.setText(prompt);
                     }
-                }
+                });
             }
+        }'''
         }
 
-        @OptIn(ExperimentalMaterial3Api::class)
-        @Composable
-        fun FabriqStudioScreen() {
-            var selectedGarment by remember { mutableStateOf("Kurti Set") }
-            var selectedModel by remember { mutableStateOf("Indian Female, 20s") }
-            var selectedScene by remember { mutableStateOf("Luxury Boutique Studio") }
-            var selectedRatio by remember { mutableStateOf("4:5") }
-            var generatedPrompt by remember { mutableStateOf("") }
-            val clipboard = LocalClipboardManager.current
-
-            val garments = listOf("Kurti Set", "Designer Saree", "Anarkali Suit", "Oversized T-Shirt", "Maxi Dress")
-            val models = listOf("Indian Female, 20s", "Indian Male, Athletic", "International Female")
-            val scenes = listOf("Luxury Boutique Studio", "Clean White Infinity", "Aesthetic Cafe")
-            val ratios = listOf("4:5 (Post)", "9:16 (Story)", "1:1 (Square)")
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(title = { Text("Fabriq Studio", fontWeight = FontWeight.Bold) })
-                }
-            ) { padding ->
-                Column(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text("1. Garment Type", fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        garments.forEach { g ->
-                            FilterChip(selected = selectedGarment == g, onClick = { selectedGarment = g }, label = { Text(g) })
-                        }
-                    }
-
-                    Text("2. Model Selection", fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        models.forEach { m ->
-                            FilterChip(selected = selectedModel == m, onClick = { selectedModel = m }, label = { Text(m) })
-                        }
-                    }
-
-                    Text("3. Photoshoot Scene", fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        scenes.forEach { s ->
-                            FilterChip(selected = selectedScene == s, onClick = { selectedScene = s }, label = { Text(s) })
-                        }
-                    }
-
-                    Text("4. Aspect Ratio", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ratios.forEach { r ->
-                            val cleanR = r.substringBefore(" ")
-                            FilterChip(selected = selectedRatio == cleanR, onClick = { selectedRatio = cleanR }, label = { Text(r) })
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            generatedPrompt = "Editorial fashion catalog photoshoot, $selectedModel wearing the uploaded reference $selectedGarment, setting in $selectedScene, soft diffused studio light, sharp fabric weaves and drape, 8k --ar $selectedRatio --style raw --v 6.1"
-                        },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Generate Prompt", fontWeight = FontWeight.Bold)
-                    }
-
-                    if (generatedPrompt.isNotEmpty()) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Generated AI Prompt:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text(generatedPrompt, fontSize = 13.sp)
-                                Button(onClick = { clipboard.setText(AnnotatedString(generatedPrompt)) }) {
-                                    Text("Copy Prompt")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        for path, content in files.items():
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(content)
         EOF
+        python3 make_app.py
 
-    - name: Build Debug APK
+    - name: Compile APK
       run: |
-        gradle wrapper --gradle-version 8.7
+        gradle wrapper --gradle-version 8.5
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace --no-daemon
+        ./gradlew assembleDebug --no-daemon
 
-    - name: Upload APK
+    - name: Upload Output
       uses: actions/upload-artifact@v4
       with:
         name: FabriqStudio-APK
