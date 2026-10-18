@@ -324,4 +324,147 @@ jobs:
                     )
                 },
                 bottomBar = {
-                    Surface(modifier = Modifier.fillMaxWidth().padding(1
+                    Surface(modifier = Modifier.fillMaxWidth().padding(16.dp), shadowElevation = 10.dp, shape = RoundedCornerShape(16.dp)) {
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showResultSheet = true
+                            },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(\"Generate Production Prompts\", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            ) { padding ->
+                Column(modifier = Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(\"1. Garment Category & Style\", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        TabRow(selectedTabIndex = uiState.selectedCategoryIndex) {
+                            Presets.categories.forEachIndexed { index, group ->
+                                Tab(selected = uiState.selectedCategoryIndex == index, onClick = { viewModel.updateCategory(index, group.items[0]) }, text = { Text(group.category) })
+                            }
+                        }
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Presets.categories[uiState.selectedCategoryIndex].items.forEach { item ->
+                                FilterChip(selected = uiState.garment.id == item.id, onClick = { viewModel.updateGarment(item) }, label = { Text(item.name) })
+                            }
+                        }
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(\"2. Fashion Model\", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Presets.models.forEach { model ->
+                            OutlinedCard(
+                                modifier = Modifier.fillMaxWidth().clickable { viewModel.updateModel(model) },
+                                border = BorderStroke(if (uiState.model == model) 2.dp else 1.dp, if (uiState.model == model) MaterialTheme.colorScheme.primary else Color.LightGray)
+                            ) {
+                                Text(model, modifier = Modifier.padding(14.dp), fontWeight = if (uiState.model == model) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(\"3. Photoshoot Environment\", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Presets.scenes.chunked(2).forEach { row ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { scene ->
+                                    OutlinedCard(
+                                        modifier = Modifier.weight(1f).clickable { viewModel.updateScene(scene) },
+                                        border = BorderStroke(if (uiState.scene == scene) 2.dp else 1.dp, if (uiState.scene == scene) MaterialTheme.colorScheme.primary else Color.LightGray)
+                                    ) {
+                                        Text(scene.substringBefore(\",\"), modifier = Modifier.padding(12.dp), fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+		                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(\"4. Aspect Ratio\", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Presets.ratios.forEach { (ratio, label) ->
+                                FilterChip(selected = uiState.aspectRatio == ratio, onClick = { viewModel.updateRatio(ratio) }, label = { Text(\"\$ratio (\$label)\") })
+                            }
+                        }
+                    }
+                }
+            }
+            if (showResultSheet) {
+                val mj = PromptGenerator.generateMidjourney(uiState)
+                val gemini = PromptGenerator.generateGeminiChatGpt(uiState)
+                val isMjSaved by viewModel.isPromptSavedFlow(mj).collectAsState(initial = false)
+                ModalBottomSheet(onDismissRequest = { showResultSheet = false }) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(\"Generated Studio Prompts\", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(\"Midjourney v6.1\", fontWeight = FontWeight.Bold)
+                                    Row {
+                                        IconButton(onClick = { viewModel.toggleSave(\"Midjourney\", uiState.garment.name, mj, isMjSaved) }) {
+                                            Icon(if (isMjSaved) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (isMjSaved) Color.Red else Color.Gray)
+                                        }
+                                        Button(onClick = { clipboardManager.setText(AnnotatedString(mj)) }) { Text(\"Copy\") }
+                                    }
+                                }
+                                Text(mj, fontSize = 12.sp)
+                            }
+                        }
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(\"Gemini / ChatGPT\", fontWeight = FontWeight.Bold)
+                                    Button(onClick = { clipboardManager.setText(AnnotatedString(gemini)) }) { Text(\"Copy\") }
+                                }
+                                Text(gemini, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            if (showBookmarksSheet) {
+                ModalBottomSheet(onDismissRequest = { showBookmarksSheet = false }) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                        Text(\"Saved Prompts (\${savedPrompts.size})\", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                            items(savedPrompts) { item ->
+                                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(\"\${item.engineName} - \${item.garmentTitle}\", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Text(item.promptText, fontSize = 11.sp, maxLines = 2)
+                                        Row {
+                                            Button(onClick = { clipboardManager.setText(AnnotatedString(item.promptText)) }) { Text(\"Copy\") }
+                                            Spacer(Modifier.width(8.dp))
+                                            Button(onClick = { viewModel.deletePrompt(item) }) { Text(\"Delete\") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }'''
+        }
+
+        for path, content in files.items():
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                f.write(content)
+        "
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Build Debug APK
+      run: |
+        gradle wrapper --gradle-version 8.7
+        chmod +x gradlew
+        ./gradlew assembleDebug --stacktrace
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: FabriqStudio-APK
+        path: app/build/outputs/apk/debug/app-debug.apk
